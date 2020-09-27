@@ -33,34 +33,31 @@ local viewer_methods = {
     get = true,
 }
 
-
 local resources = {
-    routes          = require("apisix.admin.routes"),
-    services        = require("apisix.admin.services"),
-    upstreams       = require("apisix.admin.upstreams"),
-    consumers       = require("apisix.admin.consumers"),
-    schema          = require("apisix.admin.schema"),
-    ssl             = require("apisix.admin.ssl"),
-    plugins         = require("apisix.admin.plugins"),
-    proto           = require("apisix.admin.proto"),
-    global_rules    = require("apisix.admin.global_rules"),
-    stream_routes   = require("apisix.admin.stream_routes"),
+    routes = require("apisix.admin.routes"),
+    services = require("apisix.admin.services"),
+    upstreams = require("apisix.admin.upstreams"),
+    consumers = require("apisix.admin.consumers"),
+    schema = require("apisix.admin.schema"),
+    ssl = require("apisix.admin.ssl"),
+    plugins = require("apisix.admin.plugins"),
+    proto = require("apisix.admin.proto"),
+    global_rules = require("apisix.admin.global_rules"),
+    stream_routes = require("apisix.admin.stream_routes"),
 }
 
-
-local _M = {version = 0.4}
+local _M = { version = 0.4 }
 local router
-
 
 local function check_token(ctx)
     local local_conf = core.config.local_conf()
     if not local_conf or not local_conf.apisix
-       or not local_conf.apisix.admin_key then
+            or not local_conf.apisix.admin_key then
         return true
     end
 
     local req_token = ctx.var.arg_api_key or ctx.var.http_x_api_key
-                      or ctx.var.cookie_x_api_key
+            or ctx.var.cookie_x_api_key
     if not req_token then
         return false, "missing apikey"
     end
@@ -78,13 +75,12 @@ local function check_token(ctx)
     end
 
     if admin.role == "viewer" and
-       not viewer_methods[str_lower(get_method())] then
+            not viewer_methods[str_lower(get_method())] then
         return false, "invalid method for role viewer"
     end
 
     return true
 end
-
 
 local function run()
     local api_ctx = {}
@@ -121,15 +117,15 @@ local function run()
     local req_body, err = core.request.get_body(MAX_REQ_BODY)
     if err then
         core.log.error("failed to read request body: ", err)
-        core.response.exit(400, {error_msg = "invalid request body: " .. err})
+        core.response.exit(400, { error_msg = "invalid request body: " .. err })
     end
 
     if req_body then
         local data, err = core.json.decode(req_body)
         if not data then
             core.log.error("invalid request body: ", req_body, " err: ", err)
-            core.response.exit(400, {error_msg = "invalid request body",
-                                     req_body = req_body})
+            core.response.exit(400, { error_msg = "invalid request body",
+                                      req_body = req_body })
         end
 
         req_body = data
@@ -138,18 +134,17 @@ local function run()
     local uri_args = ngx.req.get_uri_args() or {}
     if uri_args.ttl then
         if not tonumber(uri_args.ttl) then
-            core.response.exit(400, {error_msg = "invalid argument ttl: "
-                                                 .. "should be a number"})
+            core.response.exit(400, { error_msg = "invalid argument ttl: "
+                    .. "should be a number" })
         end
     end
 
     local code, data = resource[method](seg_id, req_body, seg_sub_path,
-                                        uri_args)
+            uri_args)
     if code then
         core.response.exit(code, data)
     end
 end
-
 
 local function run_stream()
     local api_ctx = {}
@@ -158,7 +153,7 @@ local function run_stream()
     local local_conf = core.config.local_conf()
     if not local_conf.apisix.stream_proxy then
         core.log.warn("stream mode is disabled, can not to add any stream ",
-                      "route")
+                "route")
         core.response.exit(400)
     end
 
@@ -197,8 +192,8 @@ local function run_stream()
         local data, err = core.json.decode(req_body)
         if not data then
             core.log.error("invalid request body: ", req_body, " err: ", err)
-            core.response.exit(400, {error_msg = "invalid request body",
-                                     req_body = req_body})
+            core.response.exit(400, { error_msg = "invalid request body",
+                                      req_body = req_body })
         end
 
         req_body = data
@@ -207,18 +202,17 @@ local function run_stream()
     local uri_args = ngx.req.get_uri_args() or {}
     if uri_args.ttl then
         if not tonumber(uri_args.ttl) then
-            core.response.exit(400, {error_msg = "invalid argument ttl: "
-                                                 .. "should be a number"})
+            core.response.exit(400, { error_msg = "invalid argument ttl: "
+                    .. "should be a number" })
         end
     end
 
     local code, data = resource[method](seg_id, req_body, seg_sub_path,
-                                        uri_args)
+            uri_args)
     if code then
         core.response.exit(code, data)
     end
 end
-
 
 local function get_plugins_list()
     local api_ctx = {}
@@ -233,7 +227,6 @@ local function get_plugins_list()
     local plugins = resources.plugins.get_plugins_list()
     core.response.exit(200, plugins)
 end
-
 
 local function post_reload_plugins()
     local api_ctx = {}
@@ -253,53 +246,59 @@ local function post_reload_plugins()
     core.response.exit(200, success)
 end
 
-
 local function reload_plugins(data, event, source, pid)
     core.log.info("start to hot reload plugins")
     plugin.load()
 end
 
-
 local uri_route = {
     {
         paths = [[/apisix/admin/*]],
-        methods = {"GET", "PUT", "POST", "DELETE", "PATCH"},
+        methods = { "GET", "PUT", "POST", "DELETE", "PATCH" },
         handler = run,
     },
     {
         paths = [[/apisix/admin/stream_routes*]],
-        methods = {"GET", "PUT", "POST", "DELETE", "PATCH"},
+        methods = { "GET", "PUT", "POST", "DELETE", "PATCH" },
         handler = run_stream,
     },
     {
         paths = [[/apisix/admin/plugins/list]],
-        methods = {"GET", "PUT", "POST", "DELETE"},
+        methods = { "GET", "PUT", "POST", "DELETE" },
         handler = get_plugins_list,
     },
     {
         paths = reload_event,
-        methods = {"PUT"},
+        methods = { "PUT" },
         handler = post_reload_plugins,
     },
 }
 
-
 function _M.init_worker()
+    --admin接口初始化，主要是上面的uri_route
     local local_conf = core.config.local_conf()
     if not local_conf.apisix or not local_conf.apisix.enable_admin then
         return
     end
 
+    --这里相当于新建路由
+    --uri_route在传递给route.new的时候，自身属性就有了handler这个function
     router = route.new(uri_route)
+    --resty.worker.events是worker间进程通信
+    --worker 事件采用的是事件监听模式
+    --在 init_worker 阶段需要注册对应的回调函数
     events = require("resty.worker.events")
-
+    --register函数的签名是syntax: events.register(callback, source, event1, event2, ...)
+    --将注册一个回调函数来接收事件。如果source和events被省略，那么回调将在每个事件上执行，即只要有事件发生，都会回调
+    --如果source被提供，那么只有具有匹配source的事件才会被通过
+    --如果给定了(一个或多个)事件名称，那么只有当source和events都匹配时才调用回调
+    --所以用在这里的场景就是：注册了一个事件回调，回调的函数是reload_plugins，事件源是reload_event，事件是 "PUT"
+    --即只要有PUT请求访问 "/apisix/admin/plugins/reload"，则所有监听此事件的worker执行reload_plugins函数
     events.register(reload_plugins, reload_event, "PUT")
 end
-
 
 function _M.get()
     return router
 end
-
 
 return _M

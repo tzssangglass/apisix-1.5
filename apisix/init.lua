@@ -79,7 +79,6 @@ function _M.http_init(args)
     core.id.init()
 end
 
-
 function _M.http_init_worker()
     local we = require("resty.worker.events")
     local ok, err = we.configure({shm = "worker-events", interval = 0.1})
