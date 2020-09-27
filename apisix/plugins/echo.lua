@@ -14,15 +14,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-package.path = package.path .. ";/Applications/ZeroBraneStudio.app/Contents/ZeroBraneStudio/lualibs/?/?.lua;/Applications/ZeroBraneStudio.app/Contents/ZeroBraneStudio/lualibs/?.lua"
-package.cpath = package.cpath .. ";/Applications/ZeroBraneStudio.app/Contents/ZeroBraneStudio/bin/clibs/?.dylib;/Applications/ZeroBraneStudio.app/Contents/ZeroBraneStudio/bin/?.dylib"
-
 local core = require("apisix.core")
 local pairs       = pairs
 local type        = type
 local ngx         = ngx
 
-local log          = require("apisix.core.log")
 
 
 local schema = {
@@ -97,9 +93,7 @@ end
 
 
 function _M.access(conf, ctx)
-    require('mobdebug').start("127.0.0.1", 8172)
-    log.warn("echo access")
-    
+
     local value = core.request.header(ctx, "Authorization")
 
     if value ~= conf.auth_value then

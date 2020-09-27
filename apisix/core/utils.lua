@@ -45,6 +45,8 @@ local _M = {
 
 
 function _M.get_seed_from_urandom()
+    --/dev/random和/dev/urandom是Linux系统中提供的随机伪设备，这两个设备的任务，是提供永不为空的随机字节数据流
+    --/dev/urandom不依赖系统的中断，也就不会造成进程忙等待，但是数据的随机性也不高
     local frandom, err = open("/dev/urandom", "rb")
     if not frandom then
         return nil, 'failed to open /dev/urandom: ' .. err

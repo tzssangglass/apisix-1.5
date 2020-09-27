@@ -17,7 +17,7 @@
 hook_conf:
   enable: false                 # enable or disable this feature
   name: hook_phase              # the name of module and function list
-  log_level: warn               # log level
+  log_level: notice               # log level
   is_print_input_args: true     # print the input arguments
   is_print_return_value: true   # print the return value
 

@@ -51,22 +51,29 @@ local _M = {version = 0.4}
 
 
 function _M.http_init(args)
+    --ua-resty-core 是把 lua-nginx-module 已有的部分 API，使用 FFI 的模式重新实现了一遍。
+    --使用FFI实现的代码更为简洁易懂，而且因为可以被JIT追踪和优化，性能更高。
+    --下面这行代码就是启动lua-resty-core
     require("resty.core")
 
     if require("ffi").os == "Linux" then
+        --调整jit_stack_size，PCRE(正则表达式引擎)引擎的jit堆栈大小，主要是处理正则表达相关的
+        --jit堆栈大小不能设置为低于PCRE的默认32K的值。
         require("ngx.re").opt("jit_stack_size", 200 * 1024)
     end
-
+    --启用LuaJIT的跟踪缝合可以确保尽可能多的Lua代码被JIT编译。lua-rest -core库大量使用FFI;那些基于ffi的Lua代码路径如果被解释的话会非常慢。
+    --minstitch 之类的都是jit编译参数
     require("jit.opt").start("minstitch=2", "maxtrace=4000",
                              "maxrecord=8000", "sizemcode=64",
                              "maxmcode=4000", "maxirconst=1000")
 
-    --
+    --获取随机数种子
     local seed, err = core.utils.get_seed_from_urandom()
     if not seed then
         core.log.warn('failed to get seed from urandom: ', err)
         seed = ngx_now() * 1000 + ngx.worker.pid()
     end
+    --设置math的随机数种子
     math.randomseed(seed)
     parse_args(args)
     core.id.init()

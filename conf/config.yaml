@@ -177,6 +177,7 @@ plugins:                          # plugin list
   - authz-keycloak
   - uri-blocker
   - request-validation
+  - hello-world
 
 stream_plugins:
   - mqtt-proxy
