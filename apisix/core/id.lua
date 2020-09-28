@@ -59,15 +59,19 @@ _M.gen_uuid_v4 = uuid.generate_v4
 
 
 function _M.init()
+    --读取指定文件夹下的apisix.uid
     local uid_file_path = prefix .. "/conf/apisix.uid"
     apisix_uid = read_file(uid_file_path)
+    --如果有的话，则退出
     if apisix_uid then
         return
     end
 
+    --apisix.uid应该是指apisix的实例id
     apisix_uid = uuid.generate_v4()
     log.notice("not found apisix uid, generate a new one: ", apisix_uid)
 
+    --生成成功则写入文件
     local ok, err = write_file(uid_file_path, apisix_uid)
     if not ok then
         log.error(err)

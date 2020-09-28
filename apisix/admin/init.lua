@@ -285,6 +285,7 @@ local uri_route = {
 
 
 function _M.init_worker()
+    --读取配置，local_conf调用的是conf_local.lua的local_conf函数
     local local_conf = core.config.local_conf()
     if not local_conf.apisix or not local_conf.apisix.enable_admin then
         return

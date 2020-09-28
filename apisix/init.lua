@@ -73,27 +73,35 @@ function _M.http_init(args)
         core.log.warn('failed to get seed from urandom: ', err)
         seed = ngx_now() * 1000 + ngx.worker.pid()
     end
-    --设置math的随机数种子
+    --设置math的随机数种子，目的是为了让每次调用math.random()都会产生不同的随机数列
     math.randomseed(seed)
+    --dns解析
     parse_args(args)
     core.id.init()
 end
 
 
 function _M.http_init_worker()
+    --nginx worker间事件，用于worker间进程通信，参考https://github.com/Kong/lua-resty-worker-events
     local we = require("resty.worker.events")
+    --将初始化事件侦听器，shm: 要使用的共享内存的( 必选) ，interval: 轮询事件( 以秒为单位)的( 可选) 间隔
     local ok, err = we.configure({shm = "worker-events", interval = 0.1})
     if not ok then
         error("failed to init worker event: " .. err)
     end
+    --查看用户是否制定了dns解析类型
     local discovery = require("apisix.discovery.init").discovery
+    --如果用户定义了discovery，比如eureka,则启动对应的初始化方法
     if discovery and discovery.init_worker then
         discovery.init_worker()
     end
+    --启动apisix的负载均衡器
     require("apisix.balancer").init_worker()
+    --这里load_balancer是一个function，即run方法
     load_balancer = require("apisix.balancer").run
     require("apisix.admin.init").init_worker()
 
+    --调用一系列的init_worker函数
     router.http_init_worker()
     require("apisix.http.service").init_worker()
     plugin.init_worker()
