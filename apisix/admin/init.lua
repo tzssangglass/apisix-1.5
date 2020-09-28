@@ -285,15 +285,25 @@ local uri_route = {
 
 
 function _M.init_worker()
-    --读取配置，local_conf调用的是conf_local.lua的local_conf函数
+    --admin接口初始化，主要是上面的uri_route
     local local_conf = core.config.local_conf()
     if not local_conf.apisix or not local_conf.apisix.enable_admin then
         return
     end
 
+    --这里相当于新建路由
+    --uri_route在传递给route.new的时候，自身属性就有了handler这个function
     router = route.new(uri_route)
+    --resty.worker.events是worker间进程通信
+    --worker 事件采用的是事件监听模式
+    --在 init_worker 阶段需要注册对应的回调函数
     events = require("resty.worker.events")
-
+    --register函数的签名是syntax: events.register(callback, source, event1, event2, ...)
+    --将注册一个回调函数来接收事件。如果source和events被省略，那么回调将在每个事件上执行，即只要有事件发生，都会回调
+    --如果source被提供，那么只有具有匹配source的事件才会被通过
+    --如果给定了(一个或多个)事件名称，那么只有当source和events都匹配时才调用回调
+    --所以用在这里的场景就是：注册了一个事件回调，回调的函数是reload_plugins，事件源是reload_event，事件是 "PUT"
+    --即只要有PUT请求访问 "/apisix/admin/plugins/reload"，则所有监听此事件的worker执行reload_plugins函数
     events.register(reload_plugins, reload_event, "PUT")
 end
 

@@ -80,7 +80,6 @@ function _M.http_init(args)
     core.id.init()
 end
 
-
 function _M.http_init_worker()
     --nginx worker间事件，用于worker间进程通信，参考https://github.com/Kong/lua-resty-worker-events
     local we = require("resty.worker.events")

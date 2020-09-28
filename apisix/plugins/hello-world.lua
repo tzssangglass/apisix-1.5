@@ -3,7 +3,7 @@ package.cpath = package.cpath .. ";/Applications/ZeroBraneStudio.app/Contents/Ze
 
 local core = require("apisix.core")
 local log = require("apisix.core.log")
-local inspect = require("apisix.plugins.inspect")
+local inspect = require("inspect")
 
 local schema = {
     type = "object",
