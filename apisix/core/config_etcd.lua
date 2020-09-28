@@ -138,11 +138,13 @@ local function sync_data(self)
     end
 
     if self.need_reload then
+        --根据key读取dir
         local res, err = readdir(self.etcd_cli, self.key)
         if not res then
             return false, err
         end
 
+        --获取返回值
         local dir_res, headers = res.body.node, res.headers
         log.debug("readdir key: ", self.key, " res: ",
                   json.delay_encode(dir_res))
@@ -158,9 +160,12 @@ local function sync_data(self)
             dir_res.nodes = {}
         end
 
+        --这一段的目的是，调用clean_handlers函数
         if self.values then
             for i, val in ipairs(self.values) do
+                --这里self.values应当是Upstream
                 if val and val.clean_handlers then
+                    --todo clean_handlers可能跟balancer#create_checker函数有关，里面有对clean_handlers的insert操作
                     for _, clean_handler in ipairs(val.clean_handlers) do
                         clean_handler(val)
                     end
@@ -172,10 +177,15 @@ local function sync_data(self)
             self.values_hash = nil
         end
 
+        --看起来values存储的应该是upstreams的nodes
+        --table.new(narray, nhash) 两个参数分别代表table里是array还是hash的
+        --新建一个数组，存放nodes，长度是#dir_res.nodes
         self.values = new_tab(#dir_res.nodes, 0)
+        --新建一个哈希表，存放nodes，长度是#dir_res.nodes
         self.values_hash = new_tab(0, #dir_res.nodes)
 
         local changed = false
+        --这里是遍历etcd中的nodes了
         for _, item in ipairs(dir_res.nodes) do
             local key = short_key(self, item.key)
             local data_valid = true
@@ -320,7 +330,9 @@ local function sync_data(self)
             self.values[pre_index] = false
         end
 
+
     elseif res.value then
+        --当从etcd新增一个item时，初始化clean_handlers
         res.clean_handlers = {}
         insert_tab(self.values, res)
         self.values_hash[key] = #self.values
@@ -381,16 +393,28 @@ local function _automatic_fetch(premature, self)
     end
 
     local i = 0
+    --exiting()即ngx.worker.exiting
+    --这个函数返回一个布尔值，指示当前的Nginx工作进程是否已经开始退出。Nginx工作进程退出发生在Nginx服务器退出或配置重新加载(又名HUP重载)。
+    --self.running即obj设置的，running = true,
     while not exiting() and self.running and i <= 32 do
         i = i + 1
+        --调用数据同步函数
+        --这里使用了pcall（protected call）来包装需要执行的代码，这是Lua 中处理错误的方式
+        --函数第一个返回值是函数的运行状态(true,false)，第二个返回值是pcall中函数的返回值
+        --所以在这里，ok是sync_data函数的运行状态
+        --ok2和err是sync_data函数的返回值
         local ok, ok2, err = pcall(sync_data, self)
         if not ok then
+            --如果函数运行错误，那么ok2的出参位置就是errorinfo
             err = ok2
             log.error("failed to fetch data from etcd: ", err, ", ",
                       tostring(self))
+            --使用openresty的lua库，(进程内)协程的切换，但进程还是处于运行状态(其他协程还在运行)
+            --此处相当于当前协程沉睡3s
             ngx_sleep(3)
+            --沉睡完之后跳出循环，再次尝试
             break
-
+        --如果sync_data主动返回false，并且err有值
         elseif not ok2 and err then
             if err ~= "timeout" and err ~= "Key not found"
                and self.last_err ~= err then
@@ -398,21 +422,30 @@ local function _automatic_fetch(premature, self)
                           tostring(self))
             end
 
+            --保存当前最新的异常现场，即让last_err指向当前的err，更新last_err_time为当前时间
             if err ~= self.last_err then
                 self.last_err = err
                 self.last_err_time = ngx_time()
             else
                 if ngx_time() - self.last_err_time >= 30 then
+                    --如果当前的异常和前一次的异常一样，并且已经过去了30秒，则置空last_err
+                    --出现这种情况一般说明，这么做的目的？可能是相同的异常前面都输出了，再继续执行，相同原因的失败也只是时间问题
+                    --走到这里有几个条件
+                    --i <= 32
+                    --err == self.last_err
+                    --ngx_time() - self.last_err_time >= 30
                     self.last_err = nil
+                    --执行完之后，还能再次进入循环，会进入err ~= self.last_err这个分支
                 end
             end
             ngx_sleep(0.5)
-
+        --如果sync_data主动返回false
         elseif not ok2 then
             ngx_sleep(0.05)
         end
     end
 
+    --走到这里，while循环结束了，相当于本轮fetch结束，递归调用，这里应当是配置更新能做到毫秒级延迟的重点，因为持续地有协程在从etcd同步数据到本地
     if not exiting() and self.running then
         ngx_timer_at(0, _automatic_fetch, self)
     end
@@ -425,18 +458,21 @@ function _M.new(key, opts)
         return nil, err
     end
 
+    --获取etcd相关配置
     local etcd_conf = clone_tab(local_conf.etcd)
     local prefix = etcd_conf.prefix
     etcd_conf.http_host = etcd_conf.host
     etcd_conf.host = nil
     etcd_conf.prefix = nil
 
+    --创建etcd连接客户端
     local etcd_cli
     etcd_cli, err = etcd.new(etcd_conf)
     if not etcd_cli then
         return nil, err
     end
 
+    --参数赋值
     local automatic = opts and opts.automatic
     local item_schema = opts and opts.item_schema
     local filter_fun = opts and opts.filter
@@ -468,6 +504,7 @@ function _M.new(key, opts)
         ngx_timer_at(0, _automatic_fetch, obj)
     end
 
+    --保存已创建的key
     if key then
         created_obj[key] = obj
     end

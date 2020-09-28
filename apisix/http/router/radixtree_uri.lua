@@ -128,6 +128,7 @@ end
 
 function _M.init_worker(filter)
     local err
+    --在etcd中新建一条配置，key是"/routes"
     user_routes, err = core.config.new("/routes", {
             automatic = true,
             item_schema = core.schema.route,
