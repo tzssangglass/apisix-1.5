@@ -135,86 +135,6 @@ end
 local function sync_data(self)
     --启动的时候，这里的key有很多个
     --/apisix/ssl  /apisix/proto /apisix/global_rules /apisix/consumers 等
-    --self示例
-    --{
-    --  automatic = true,
-    --  conf_version = 0,
-    --  etcd_cli = {
-    --    endpoints = { {
-    --        api_prefix = "/v2",
-    --        full_prefix = "http://127.0.0.1:2379/v2",
-    --        http_host = "http://127.0.0.1:2379",
-    --        keys = "http://127.0.0.1:2379/v2/keys",
-    --        stats_leader = "http://127.0.0.1:2379/v2/stats/leader",
-    --        stats_self = "http://127.0.0.1:2379/v2/stats/self",
-    --        stats_store = "http://127.0.0.1:2379/v2/stats/store",
-    --        version = "http://127.0.0.1:2379/version"
-    --      } },
-    --    init_count = 0,
-    --    is_cluster = false,
-    --    key_prefix = "",
-    --    timeout = 30,
-    --    ttl = -1,
-    --    <metatable> = {
-    --      __index = {
-    --        decode_json = <function 1>,
-    --        delete = <function 2>,
-    --        encode_json = <function 3>,
-    --        get = <function 4>,
-    --        mkdir = <function 5>,
-    --        mkdirnx = <function 6>,
-    --        new = <function 7>,
-    --        push = <function 8>,
-    --        readdir = <function 9>,
-    --        rmdir = <function 10>,
-    --        set = <function 11>,
-    --        setnx = <function 12>,
-    --        setx = <function 13>,
-    --        stats_leader = <function 14>,
-    --        stats_self = <function 15>,
-    --        stats_store = <function 16>,
-    --        version = <function 17>,
-    --        wait = <function 18>,
-    --        waitdir = <function 19>
-    --      }
-    --    }
-    --  },
-    --  item_schema = {
-    --    additionalProperties = false,
-    --    properties = {
-    --      content = {
-    --        maxLength = 1048576,
-    --        minLength = 1,
-    --        type = "string"
-    --      }
-    --    },
-    --    required = { "content" },
-    --    type = "object"
-    --  },
-    --  key = "/apisix/proto",
-    --  last_err_time = 1601307388,
-    --  need_reload = false,
-    --  prev_index = 93,
-    --  running = true,
-    --  sync_times = 0,
-    --  values = {},
-    --  values_hash = {},
-    --  <metatable> = {
-    --    __index = {
-    --      clear_local_cache = <function 20>,
-    --      close = <function 21>,
-    --      fetch_created_obj = <function 22>,
-    --      get = <function 23>,
-    --      getkey = <function 24>,
-    --      local_conf = <function 25>,
-    --      new = <function 26>,
-    --      server_version = <function 27>,
-    --      upgrade_version = <function 28>,
-    --      version = 0.3
-    --    },
-    --    __tostring = <function 29>
-    --  }
-    --}
 
     if not self.key then
         return nil, "missing 'key' arguments"
@@ -231,6 +151,7 @@ local function sync_data(self)
         local dir_res, headers = res.body.node, res.headers
         log.debug("readdir key: ", self.key, " res: ",
                   json.delay_encode(dir_res))
+        --一系列判空
         if not dir_res then
             return false, err
         end
@@ -287,94 +208,56 @@ local function sync_data(self)
                 end
             end
 
+
             if data_valid then
                 changed = true
+                --启动的时候，self.values = {} 是空的
                 insert_tab(self.values, item)
+                --用self.values_hash维护key在self.values中的下标索引
                 self.values_hash[key] = #self.values
+                --这里不清楚为什么要让item.value.id = key
                 item.value.id = key
                 item.clean_handlers = {}
 
+                --调用item的filter函数吧
                 if self.filter then
                     self.filter(item)
                 end
             end
-
+            --让self.prev_index = item.modifiedIndex
+            --维持etcd最新的modifiedIndex
             self:upgrade_version(item.modifiedIndex)
         end
 
+        --headers["X-Etcd-Index"]是etcd全局最新的modifiedIndex
         if headers then
             self:upgrade_version(headers["X-Etcd-Index"])
         end
 
         if changed then
+            --启动的时候，self.conf_version = 0
             self.conf_version = self.conf_version + 1
         end
 
+        --从etcd全量同步一个key的数据结束，self.need_reload 置为false，下面不需要再全量同步了
         self.need_reload = false
         return true
     end
 
+    --下面开始监听key目录的变化
     -- for fetch the etcd index
     --在这里get的时候，没有传wait recursive和wait_index，相当之一个直接查询key的请求，目的是为了获取etcd全局最新的modifiedIndex
     --即下面的local key_index = key_res.headers["X-Etcd-Index"]
     local key_res, _ = getkey(self.etcd_cli, self.key)
-    --key_res示例
-    --{
-    --  body = {
-    --    action = "get",
-    --    node = {
-    --      createdIndex = 6,
-    --      dir = true,
-    --      key = "/apisix/services",
-    --      modifiedIndex = 6
-    --    }
-    --  },
-    --  body_reader = <function 1>,
-    --  has_body = true,
-    --  headers = {
-    --    ["Access-Control-Allow-Headers"] = "accept, content-type, authorization",
-    --    ["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, PUT, DELETE",
-    --    ["Access-Control-Allow-Origin"] = "*",
-    --    ["Content-Length"] = "97",
-    --    ["Content-Type"] = "application/json",
-    --    Date = "Mon, 28 Sep 2020 15:29:50 GMT",
-    --    ["X-Etcd-Cluster-Id"] = "cdf818194e3a8c32",
-    --    ["X-Etcd-Index"] = "93",
-    --    ["X-Raft-Index"] = "2837",
-    --    ["X-Raft-Term"] = "8",
-    --    <metatable> = {
-    --      __index = <function 2>,
-    --      __newindex = <function 3>,
-    --      normalised = {
-    --        ["access-control-allow-headers"] = "Access-Control-Allow-Headers",
-    --        ["access-control-allow-methods"] = "Access-Control-Allow-Methods",
-    --        ["access-control-allow-origin"] = "Access-Control-Allow-Origin",
-    --        ["content-length"] = "Content-Length",
-    --        ["content-type"] = "Content-Type",
-    --        date = "Date",
-    --        ["x-etcd-cluster-id"] = "X-Etcd-Cluster-Id",
-    --        ["x-etcd-index"] = "X-Etcd-Index",
-    --        ["x-raft-index"] = "X-Raft-Index",
-    --        ["x-raft-term"] = "X-Raft-Term"
-    --      }
-    --    }
-    --  },
-    --  read_body = <function 4>,
-    --  read_trailers = <function 5>,
-    --  reason = "OK",
-    --  status = 200
-    --}
-
     --waitdir即向etcd发出wait请求
     --关键参数:
     --wait = true 一次性 watch，每监听到一次实践后，客户端都需要重新发起watch请求
     --dir = true 标识这是一个目录
     --recursive = true 当 watch 一个目录时，可以设定参数：recursive=true，表示 watch 该目录下子目录 "/key" 的变化
-    --wait_index = modified_index，在这里即self.prev_index + 1
-
+    --wait_index = modified_index，self.prev_index始终维持等于etcd当前最新的modified_index
+    --self.prev_index + 1即表示watch将要发生的modified_index + 1 事件
     --watch功能
     local dir_res, err = waitdir(self.etcd_cli, self.key, self.prev_index + 1, self.timeout)
-
     log.info("waitdir key: ", self.key, " prev_index: ", self.prev_index + 1)
     log.info("res: ", json.delay_encode(dir_res, true))
     --err == "timeout" 标识apisix主动关闭了链接，timeout即下面设置的30s
@@ -384,37 +267,25 @@ local function sync_data(self)
             --X-Etcd-Index即modifiedIndex
             local key_index = key_res.headers["X-Etcd-Index"]
             local key_idx = key_index and tonumber(key_index) or 0
+            --一般情况下，比如通过接口更改key下的数据，或者直接通过etcd客户端来修改
+            --key_idx == self.prev_index
+            --self.prev_index始终维持等于etcd的modified_index
             if key_idx and key_idx > self.prev_index then
-                -- Avoid the index to exceed 1000 by updating other keys
-                -- that will causing a full reload
-                --这里拿到的key_index即etcd在apisix主动关闭连接时返回的最新的modifiedIndex，这个和key_res.body中的modifiedIndex不一样
-                --如果查询的时候带上了wait_index，那么key_res.body中的modifiedIndex即查询参数携带的wait_index的值
-                --在这里，前面getkey的时候没有携带wait_index，不过不重要，因为根本没用body中的modifiedIndex
-                --取key_res.header中的"X-Etcd-Index"，即当前etcd最新的modifiedIndex
-                --upgrade_version(key_index)相当于让self.prev_index = key_index
-                --这是为了在下一轮waitdir循环中设置 self.prev_index + 1
-                --如果直接发送wait_index = etcd最新的modifiedIndex，会直接返回
-                --而这里的场景是apisix需要长轮询来watch这个目录下的key的变化，所以需要modifiedIndex+ 1
-                --当这个目录下的key有变化时，etcd的modifiedIndex = modifiedIndex+ 1
-                --正好触发了apisix观察的条件modifiedIndex+ 1，及时感知
                 self:upgrade_version(key_index)
             end
         end
     end
-
-    --正常返回的dir_res如下
-    --{
-    --  createdIndex = 6,
-    --  dir = true,
-    --  key = "/apisix/services",
-    --  modifiedIndex = 6
-    --}
 
     if not dir_res then
         return false, err
     end
 
     local res = dir_res.body.node
+    --处理etcd事件洪泛场景
+    --Etcd v2 server 端只缓存 1000 条事件的历史记录（全局的，不是每个 key），因此若发生事件洪泛，
+    --举个例子，如果当前 X-Etcd-Index 为 1005，则 X-Etcd-Index 中为 1 到 5 的时间就会被丢弃。
+    --如果 waitIndex=5，则服务器会返回错误信息。
+    --例如，瞬间产生超过 1000 条事件而事件监听客户端又处理得比较慢，那么就会发生事件丢失的情况。
     local err_msg = dir_res.body.message
     if err_msg then
         if err_msg == "The event in requested index is outdated and cleared"
@@ -427,7 +298,7 @@ local function sync_data(self)
         return false, err
     end
 
-    if not res then
+     if not res then
         if err == "The event in requested index is outdated and cleared" then
             self.need_reload = true
             log.warn("waitdir [", self.key, "] err: ", err,
@@ -440,6 +311,10 @@ local function sync_data(self)
 
     local key = short_key(self, res.key)
     if res.value and type(res.value) ~= "table" then
+        --如果res.value存在但是不是table，说明etcd中确实有数据变动
+        --但是这个变动后的数据无法被apisix解析
+        --相当于apisix放弃etcd的这次数据变动，但是要让self.prev_index = modified_index(etcd)
+        --即跟上etcd的节奏，为监听下一次的数据变化
         self:upgrade_version(res.modifiedIndex)
         return false, "invalid item data of [" .. self.key .. "/" .. key
                       .. "], val: " .. tostring(res.value)
@@ -470,9 +345,13 @@ local function sync_data(self)
         self.filter(res)
     end
 
+    --在self.values_hash(是一个hash表)，key对应的value，即此处的pre_index，是一个数字，表示数组下标
+    --这个数组下标，是self.values(是一个array数组)中的下标，self.values存放的是key对应的真正的value，
     local pre_index = self.values_hash[key]
     if pre_index then
+        --存在的话，直接通过pre_index下标访问self.values数组，获得key在apisix中对应的真正的value
         local pre_val = self.values[pre_index]
+        --先执行clean_handlers
         if pre_val and pre_val.clean_handlers then
             for _, clean_handler in ipairs(pre_val.clean_handlers) do
                 clean_handler(pre_val)
@@ -481,15 +360,17 @@ local function sync_data(self)
         end
 
         if res.value then
+            --这里是真正的用etcd的数据来覆盖apisix本地缓存中的数据
             res.value.id = key
             self.values[pre_index] = res
             res.clean_handlers = {}
 
         else
+            --如果要更新的数据在etcd中不存在了，那么本地也要清除
+            --同步次数加一
             self.sync_times = self.sync_times + 1
             self.values[pre_index] = false
         end
-
 
     elseif res.value then
         --当从etcd新增一个item时，初始化clean_handlers
@@ -501,24 +382,37 @@ local function sync_data(self)
 
     -- avoid space waste
     -- todo: need to cover this path, it is important.
+    --只有在上面key在self.values_hash中存在，但是etcd的body.node.value不存在的条件下
+    --self.sync_times = self.sync_times + 1
+    --相当于apisix本地有这个key的数据，但是etcd已经没有了，上面已经清理过了self.values
+    --这一步相当于给self.values进行缩容，剔除里面的被置为false的元素
     if self.sync_times > 100 then
         local count = 0
         for i = 1, #self.values do
+            --val存储的是下标对应的元素，可能是上面置为false，也可能是真的有效值
             local val = self.values[i]
+            --上面是把失效位置的下标置为false，但是对于gc来说，是不可回收的
+            --这里是置为nil，相当于让gc进行回收
             self.values[i] = nil
             if val then
+                --如果val是有效值的话(不是上面置为false)
                 count = count + 1
+                --存储有效值
                 self.values[count] = val
             end
         end
 
+        --对self.values缩容之后，同样要对self.values_hash缩容
+        --重新建立key与self.values_hash和self.values之间的对应关系
         for i = 1, count do
             key = short_key(self, self.values[i].key)
             self.values_hash[key] = i
         end
+        --self.sync_times归零
         self.sync_times = 0
     end
 
+    --启动的时候reload会+1，有数据同步也+1
     self.conf_version = self.conf_version + 1
     return self.values
 end
