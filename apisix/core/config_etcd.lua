@@ -315,6 +315,8 @@ local function sync_data(self)
     end
 
     -- for fetch the etcd index
+    --在这里get的时候，没有传wait recursive和wait_index，相当之一个直接查询key的请求，目的是为了获取etcd全局最新的modifiedIndex
+    --即下面的local key_index = key_res.headers["X-Etcd-Index"]
     local key_res, _ = getkey(self.etcd_cli, self.key)
     --key_res示例
     --{
@@ -363,22 +365,50 @@ local function sync_data(self)
     --  status = 200
     --}
 
+    --waitdir即向etcd发出wait请求
+    --关键参数:
+    --wait = true 一次性 watch，每监听到一次实践后，客户端都需要重新发起watch请求
+    --dir = true 标识这是一个目录
+    --recursive = true 当 watch 一个目录时，可以设定参数：recursive=true，表示 watch 该目录下子目录 "/key" 的变化
+    --wait_index = modified_index，在这里即self.prev_index + 1
 
     --watch功能
     local dir_res, err = waitdir(self.etcd_cli, self.key, self.prev_index + 1, self.timeout)
+
     log.info("waitdir key: ", self.key, " prev_index: ", self.prev_index + 1)
     log.info("res: ", json.delay_encode(dir_res, true))
+    --err == "timeout" 标识apisix主动关闭了链接，timeout即下面设置的30s
+    --err == "timeout"标识在这段时间内，观察的目录下的key没有发生变化
     if err == "timeout" then
         if key_res and key_res.headers then
+            --X-Etcd-Index即modifiedIndex
             local key_index = key_res.headers["X-Etcd-Index"]
             local key_idx = key_index and tonumber(key_index) or 0
             if key_idx and key_idx > self.prev_index then
                 -- Avoid the index to exceed 1000 by updating other keys
                 -- that will causing a full reload
+                --这里拿到的key_index即etcd在apisix主动关闭连接时返回的最新的modifiedIndex，这个和key_res.body中的modifiedIndex不一样
+                --如果查询的时候带上了wait_index，那么key_res.body中的modifiedIndex即查询参数携带的wait_index的值
+                --在这里，前面getkey的时候没有携带wait_index，不过不重要，因为根本没用body中的modifiedIndex
+                --取key_res.header中的"X-Etcd-Index"，即当前etcd最新的modifiedIndex
+                --upgrade_version(key_index)相当于让self.prev_index = key_index
+                --这是为了在下一轮waitdir循环中设置 self.prev_index + 1
+                --如果直接发送wait_index = etcd最新的modifiedIndex，会直接返回
+                --而这里的场景是apisix需要长轮询来watch这个目录下的key的变化，所以需要modifiedIndex+ 1
+                --当这个目录下的key有变化时，etcd的modifiedIndex = modifiedIndex+ 1
+                --正好触发了apisix观察的条件modifiedIndex+ 1，及时感知
                 self:upgrade_version(key_index)
             end
         end
     end
+
+    --正常返回的dir_res如下
+    --{
+    --  createdIndex = 6,
+    --  dir = true,
+    --  key = "/apisix/services",
+    --  modifiedIndex = 6
+    --}
 
     if not dir_res then
         return false, err
