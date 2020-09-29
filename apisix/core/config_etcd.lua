@@ -133,6 +133,89 @@ end
 
 
 local function sync_data(self)
+    --启动的时候，这里的key有很多个
+    --/apisix/ssl  /apisix/proto /apisix/global_rules /apisix/consumers 等
+    --self示例
+    --{
+    --  automatic = true,
+    --  conf_version = 0,
+    --  etcd_cli = {
+    --    endpoints = { {
+    --        api_prefix = "/v2",
+    --        full_prefix = "http://127.0.0.1:2379/v2",
+    --        http_host = "http://127.0.0.1:2379",
+    --        keys = "http://127.0.0.1:2379/v2/keys",
+    --        stats_leader = "http://127.0.0.1:2379/v2/stats/leader",
+    --        stats_self = "http://127.0.0.1:2379/v2/stats/self",
+    --        stats_store = "http://127.0.0.1:2379/v2/stats/store",
+    --        version = "http://127.0.0.1:2379/version"
+    --      } },
+    --    init_count = 0,
+    --    is_cluster = false,
+    --    key_prefix = "",
+    --    timeout = 30,
+    --    ttl = -1,
+    --    <metatable> = {
+    --      __index = {
+    --        decode_json = <function 1>,
+    --        delete = <function 2>,
+    --        encode_json = <function 3>,
+    --        get = <function 4>,
+    --        mkdir = <function 5>,
+    --        mkdirnx = <function 6>,
+    --        new = <function 7>,
+    --        push = <function 8>,
+    --        readdir = <function 9>,
+    --        rmdir = <function 10>,
+    --        set = <function 11>,
+    --        setnx = <function 12>,
+    --        setx = <function 13>,
+    --        stats_leader = <function 14>,
+    --        stats_self = <function 15>,
+    --        stats_store = <function 16>,
+    --        version = <function 17>,
+    --        wait = <function 18>,
+    --        waitdir = <function 19>
+    --      }
+    --    }
+    --  },
+    --  item_schema = {
+    --    additionalProperties = false,
+    --    properties = {
+    --      content = {
+    --        maxLength = 1048576,
+    --        minLength = 1,
+    --        type = "string"
+    --      }
+    --    },
+    --    required = { "content" },
+    --    type = "object"
+    --  },
+    --  key = "/apisix/proto",
+    --  last_err_time = 1601307388,
+    --  need_reload = false,
+    --  prev_index = 93,
+    --  running = true,
+    --  sync_times = 0,
+    --  values = {},
+    --  values_hash = {},
+    --  <metatable> = {
+    --    __index = {
+    --      clear_local_cache = <function 20>,
+    --      close = <function 21>,
+    --      fetch_created_obj = <function 22>,
+    --      get = <function 23>,
+    --      getkey = <function 24>,
+    --      local_conf = <function 25>,
+    --      new = <function 26>,
+    --      server_version = <function 27>,
+    --      upgrade_version = <function 28>,
+    --      version = 0.3
+    --    },
+    --    __tostring = <function 29>
+    --  }
+    --}
+
     if not self.key then
         return nil, "missing 'key' arguments"
     end
@@ -233,9 +316,56 @@ local function sync_data(self)
 
     -- for fetch the etcd index
     local key_res, _ = getkey(self.etcd_cli, self.key)
+    --key_res示例
+    --{
+    --  body = {
+    --    action = "get",
+    --    node = {
+    --      createdIndex = 6,
+    --      dir = true,
+    --      key = "/apisix/services",
+    --      modifiedIndex = 6
+    --    }
+    --  },
+    --  body_reader = <function 1>,
+    --  has_body = true,
+    --  headers = {
+    --    ["Access-Control-Allow-Headers"] = "accept, content-type, authorization",
+    --    ["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, PUT, DELETE",
+    --    ["Access-Control-Allow-Origin"] = "*",
+    --    ["Content-Length"] = "97",
+    --    ["Content-Type"] = "application/json",
+    --    Date = "Mon, 28 Sep 2020 15:29:50 GMT",
+    --    ["X-Etcd-Cluster-Id"] = "cdf818194e3a8c32",
+    --    ["X-Etcd-Index"] = "93",
+    --    ["X-Raft-Index"] = "2837",
+    --    ["X-Raft-Term"] = "8",
+    --    <metatable> = {
+    --      __index = <function 2>,
+    --      __newindex = <function 3>,
+    --      normalised = {
+    --        ["access-control-allow-headers"] = "Access-Control-Allow-Headers",
+    --        ["access-control-allow-methods"] = "Access-Control-Allow-Methods",
+    --        ["access-control-allow-origin"] = "Access-Control-Allow-Origin",
+    --        ["content-length"] = "Content-Length",
+    --        ["content-type"] = "Content-Type",
+    --        date = "Date",
+    --        ["x-etcd-cluster-id"] = "X-Etcd-Cluster-Id",
+    --        ["x-etcd-index"] = "X-Etcd-Index",
+    --        ["x-raft-index"] = "X-Raft-Index",
+    --        ["x-raft-term"] = "X-Raft-Term"
+    --      }
+    --    }
+    --  },
+    --  read_body = <function 4>,
+    --  read_trailers = <function 5>,
+    --  reason = "OK",
+    --  status = 200
+    --}
 
+
+    --watch功能
     local dir_res, err = waitdir(self.etcd_cli, self.key, self.prev_index + 1, self.timeout)
-
     log.info("waitdir key: ", self.key, " prev_index: ", self.prev_index + 1)
     log.info("res: ", json.delay_encode(dir_res, true))
     if err == "timeout" then
@@ -395,7 +525,7 @@ local function _automatic_fetch(premature, self)
     local i = 0
     --exiting()即ngx.worker.exiting
     --这个函数返回一个布尔值，指示当前的Nginx工作进程是否已经开始退出。Nginx工作进程退出发生在Nginx服务器退出或配置重新加载(又名HUP重载)。
-    --self.running即obj设置的，running = true,
+    --self.running即obj设置的，running = true
     while not exiting() and self.running and i <= 32 do
         i = i + 1
         --调用数据同步函数
@@ -447,6 +577,9 @@ local function _automatic_fetch(premature, self)
 
     --走到这里，while循环结束了，相当于本轮fetch结束，递归调用，这里应当是配置更新能做到毫秒级延迟的重点，因为持续地有协程在从etcd同步数据到本地
     if not exiting() and self.running then
+        local core = require("apisix.core")
+        core.log.warn("ngx.worker.id(): " .. ngx.worker.id() .. "Recursion _automatic_fetch")
+
         ngx_timer_at(0, _automatic_fetch, self)
     end
 end

@@ -78,6 +78,7 @@ function _M.http_init_worker()
 
     local router_http = require("apisix.http.router." .. router_http_name)
     --这里是把filter函数作为参数，传入
+
     router_http.init_worker(filter)
     _M.router_http = router_http
 
