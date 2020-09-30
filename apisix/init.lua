@@ -100,7 +100,7 @@ function _M.http_init_worker()
     load_balancer = require("apisix.balancer").run
     require("apisix.admin.init").init_worker()
 
-    --调用一系列的init_worker函数
+    --router初始化，如果配置时etcd，则通过config_etcd.lua来从etcd全量拉取数据，并watch
     router.http_init_worker()
     require("apisix.http.service").init_worker()
     plugin.init_worker()
@@ -117,6 +117,7 @@ function _M.http_init_worker()
     local dns_resolver_valid = local_conf and local_conf.apisix and
                         local_conf.apisix.dns_resolver_valid
 
+    --dns_resolver_valid dns解析结果的有效时间，这里持有的是一个函数句柄
     lru_resolved_domain = core.lrucache.new({
         ttl = dns_resolver_valid, count = 512, invalid_stale = true,
     })
@@ -450,6 +451,7 @@ function _M.http_access_phase()
                     return core.response.exit(500)
                 end
 
+                --创建路由的时候并不会把路由信息放入lrucache，只有在访问的时候才会把路由信息放入
                 lru_resolved_domain(route, api_ctx.conf_version,
                                 return_direct, route)
             end

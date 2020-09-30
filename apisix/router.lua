@@ -34,6 +34,7 @@ local function filter(route)
         return
     end
 
+    --这里主要做的是对route.value.upstream.nodes进行格式处理，如果是hash，从hash转为array
     local nodes = route.value.upstream.nodes
     if core.table.isarray(nodes) then
         for _, node in ipairs(nodes) do
@@ -50,6 +51,7 @@ local function filter(route)
             local host, port = core.utils.parse_addr(addr)
             if not core.utils.parse_ipv4(host) and
                     not core.utils.parse_ipv6(host) then
+                --如果host不是ip，就是域名
                 route.has_domain = true
             end
             local node = {
@@ -61,7 +63,6 @@ local function filter(route)
         end
         route.value.upstream.nodes = new_nodes
     end
-
     core.log.info("filter route: ", core.json.delay_encode(route))
 end
 

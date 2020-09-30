@@ -55,6 +55,7 @@ end
 
 
 local function load_plugin(name, plugins_list, is_stream_plugin)
+    --加载插件，name是插件名字，从固定的目录下加载插件
     local pkg_name = "apisix.plugins." .. name
     if is_stream_plugin then
         pkg_name = "apisix.stream.plugins." .. name
@@ -67,17 +68,20 @@ local function load_plugin(name, plugins_list, is_stream_plugin)
         return
     end
 
+    --校验插件优先级
     if not plugin.priority then
         core.log.error("invalid plugin [", name,
                         "], missing field: priority")
         return
     end
 
+    --校验插件版本号
     if not plugin.version then
         core.log.error("invalid plugin [", name, "] missing field: version")
         return
     end
 
+    --plug就是插件对象，_M定义的属性，以及_M定义的函数
     plugin.name = name
     core.table.insert(plugins_list, plugin)
 
@@ -90,9 +94,11 @@ end
 
 
 local function load()
+
     core.table.clear(local_plugins)
     core.table.clear(local_plugins_hash)
 
+    --从配置文件获取plugins列表，即已加载的插件
     local_conf = core.config.local_conf(true)
     local plugin_names = local_conf.plugins
     if not plugin_names then
