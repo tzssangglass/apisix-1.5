@@ -91,8 +91,13 @@ end
 
     local match_opts = {}
 function _M.match(api_ctx)
+    --cached_version维护的是本地router的版本号
+    --user_routes.conf_version维护的是监听etcd的router的版本变化
+    --任何对etcd的router的修改，都会导致user_routes.conf_version的变化
     if not cached_version or cached_version ~= user_routes.conf_version then
+        --根据etcd的值重建路由树
         create_radixtree_router(user_routes.values)
+        --更新缓存版本号
         cached_version = user_routes.conf_version
     end
 
@@ -107,6 +112,7 @@ function _M.match(api_ctx)
     match_opts.remote_addr = api_ctx.var.remote_addr
     match_opts.vars = api_ctx.var
 
+    --进行路由匹配
     local ok = uri_router:dispatch(api_ctx.var.uri, match_opts, api_ctx)
     if not ok then
         core.log.info("not find any matched route")
@@ -121,7 +127,6 @@ function _M.routes()
     if not user_routes then
         return nil, nil
     end
-
     return user_routes.values, user_routes.conf_version
 end
 
@@ -129,6 +134,8 @@ end
 function _M.init_worker(filter)
     local err
     --在etcd中新建一条配置，key是"/routes"
+    --user_routes获取的实际上是config_etcd.new在调用ngx_timer_at(0, _automatic_fetch, obj)之前的数据
+    --因为并没有值显示地接受ngx_timer_at(0, _automatic_fetch, obj)的返回结果
     user_routes, err = core.config.new("/routes", {
             automatic = true,
             item_schema = core.schema.route,

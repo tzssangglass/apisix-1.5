@@ -228,7 +228,6 @@ local function sync_data(self)
             --维持etcd最新的modifiedIndex
             self:upgrade_version(item.modifiedIndex)
         end
-
         --headers["X-Etcd-Index"]是etcd全局最新的modifiedIndex
         if headers then
             self:upgrade_version(headers["X-Etcd-Index"])
@@ -501,9 +500,6 @@ local function _automatic_fetch(premature, self)
 
     --走到这里，while循环结束了，相当于本轮fetch结束，递归调用，这里应当是配置更新能做到毫秒级延迟的重点，因为持续地有协程在从etcd同步数据到本地
     if not exiting() and self.running then
-        local core = require("apisix.core")
-        core.log.warn("ngx.worker.id(): " .. ngx.worker.id() .. "Recursion _automatic_fetch")
-
         ngx_timer_at(0, _automatic_fetch, self)
     end
 end
@@ -557,7 +553,6 @@ function _M.new(key, opts)
         if not key then
             return nil, "missing `key` argument"
         end
-
         ngx_timer_at(0, _automatic_fetch, obj)
     end
 
@@ -565,7 +560,6 @@ function _M.new(key, opts)
     if key then
         created_obj[key] = obj
     end
-
     return obj
 end
 

@@ -118,6 +118,7 @@ function _M.http_init_worker()
                         local_conf.apisix.dns_resolver_valid
 
     --dns_resolver_valid dns解析结果的有效时间，这里持有的是一个函数句柄
+    --为的是后面access阶段解析域名，并且缓存
     lru_resolved_domain = core.lrucache.new({
         ttl = dns_resolver_valid, count = 512, invalid_stale = true,
     })
@@ -308,6 +309,9 @@ function _M.http_access_phase()
     local api_ctx = ngx_ctx.api_ctx
 
     if not api_ctx then
+        --syntax: tb = tablepool.fetch(pool_name, narr, nrec)
+        --从指定名称池名称的表池中获取(空闲的)Lua表。
+        --如果池不存在或池是空的，只需创建一个Lua表，其数组部分包含narr元素，其散列表部分包含nrec元素。
         api_ctx = core.tablepool.fetch("api_ctx", 0, 32)
         ngx_ctx.api_ctx = api_ctx
     end
@@ -348,6 +352,7 @@ function _M.http_access_phase()
         end
     end
 
+    --进行路由匹配
     router.router_http.match(api_ctx)
 
     core.log.info("matched route: ",
