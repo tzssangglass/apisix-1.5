@@ -34,6 +34,7 @@ local _M = {version = 0.2}
 local function create_radixtree_router(routes)
     routes = routes or {}
 
+    --api_routes是指通过_M.api()预先定义好(硬编码)的一些api接口，主要是plugins中定义的
     local api_routes = plugin.api_routes()
     core.table.clear(uri_routes)
 
@@ -47,13 +48,19 @@ local function create_radixtree_router(routes)
         end
     end
 
+    --routes即etcd中用户存储的真实业务route
     for _, route in ipairs(routes) do
         if type(route) == "table" then
             local filter_fun, err
             if route.value.filter_func then
+                --loadstring(string [,chunkname])
+                --loadstring( )函数最典型的用法就是用来执行外部代码
+                --这里用loadstring加载route配置中filter_func的函数
+                --loadstring函数的返回值是一个function
                 filter_fun, err = loadstring(
                                         "return " .. route.value.filter_func,
                                         "router#" .. route.value.id)
+
                 if not filter_fun then
                     core.log.error("failed to load filter function: ", err,
                                    " route id: ", route.value.id)
@@ -74,6 +81,7 @@ local function create_radixtree_router(routes)
                                or route.value.remote_addr,
                 vars = route.value.vars,
                 filter_fun = filter_fun,
+                --todo 这里定义的handler是在哪里调用的，以及api_ctx.matched_route
                 handler = function (api_ctx)
                     api_ctx.matched_params = nil
                     api_ctx.matched_route = route
@@ -86,6 +94,10 @@ local function create_radixtree_router(routes)
 
     core.log.info("route items: ", core.json.delay_encode(uri_routes, true))
     uri_router = router.new(uri_routes)
+
+
+    local inspect = require("apisix.inspect")
+    core.log.warn("uri_router: " .. inspect(uri_router))
 end
 
 
@@ -97,6 +109,7 @@ function _M.match(api_ctx)
     if not cached_version or cached_version ~= user_routes.conf_version then
         --根据etcd的值重建路由树
         create_radixtree_router(user_routes.values)
+
         --更新缓存版本号
         cached_version = user_routes.conf_version
     end
@@ -113,6 +126,8 @@ function _M.match(api_ctx)
     match_opts.vars = api_ctx.var
 
     --进行路由匹配
+    --这里的api_ctx参数，是传给dispatch成功之后，回调uri_router的handler的参数
+    --即上面的api_ctx.matched_route = route
     local ok = uri_router:dispatch(api_ctx.var.uri, match_opts, api_ctx)
     if not ok then
         core.log.info("not find any matched route")
