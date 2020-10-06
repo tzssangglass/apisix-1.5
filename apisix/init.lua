@@ -75,7 +75,9 @@ function _M.http_init(args)
     end
     --设置math的随机数种子，目的是为了让每次调用math.random()都会产生不同的随机数列
     math.randomseed(seed)
-    --dns解析
+    --dns解析，args即启动时传进来的dns_resolver参数，这个参数即从/etc/resolv.conf文件中读取的
+    --读取的nameserver dns服务器ip
+    --下面这个操作最主要的就是给dns_resolver赋值为nameserver的ip，可能有多个
     parse_args(args)
     core.id.init()
 end
@@ -140,9 +142,17 @@ local function run_plugin(phase, plugins, api_ctx)
         and phase ~= "header_filter"
         and phase ~= "body_filter"
     then
+        --注意，for循环从1开始，为2
+        --plugins[i]即插件的运行时代码
+        --plugins[i+1]即插件实例的配置参数
         for i = 1, #plugins, 2 do
+            --phase即执行阶段，plugins[i]是一个hash table，通过plugins[i][phase]来直接访问插件对应的执行阶段的函数
+            --返回的phase_fun是一个函数指针，指向这个插件的相应阶段的执行函数
             local phase_fun = plugins[i][phase]
+            --如果有对应的phase
             if phase_fun then
+                --执行插件代码
+                --plugins[i + 1]即插件实例的配置参数
                 local code, body = phase_fun(plugins[i + 1], api_ctx)
                 if code or body then
                     core.response.exit(code, body)
@@ -204,11 +214,15 @@ local function parse_domain_for_nodes(nodes)
     local new_nodes = core.table.new(#nodes, 0)
     for _, node in ipairs(nodes) do
         local host = node.host
+        --如果host不能作为ipv4或者ipv6进行解析
         if not ipmatcher.parse_ipv4(host) and
                 not ipmatcher.parse_ipv6(host) then
+            --解析host得到ip
             local ip, err = parse_domain(host)
+
             if ip then
                 local new_node = core.table.clone(node)
+                --重置host为ip
                 new_node.host = ip
                 core.table.insert(new_nodes, new_node)
             end
@@ -254,6 +268,7 @@ local function parse_domain_in_up(up, api_ctx)
     end
 
     local old_dns_value = up.dns_value and up.dns_value.nodes
+
     local ok = compare_upstream_node(old_dns_value, new_nodes)
     if ok then
         return up
@@ -280,17 +295,20 @@ local function parse_domain_in_route(route, api_ctx)
     end
 
     local old_dns_value = route.dns_value and route.dns_value.upstream.nodes
+    --对比route.dns_value和新解析的new_nodes
     local ok = compare_upstream_node(old_dns_value, new_nodes)
+    --如果一致的话则返回
     if ok then
         return route
     end
 
+    --把dns解析的结果存到route里面，并且修改api_ctx.conf_version
+    --todo 这里还有一些疑点，old_dns_value什么场景下会出现、dns查询缓存什么场景下会实现
     if not route.modifiedIndex_org then
         route.modifiedIndex_org = route.modifiedIndex
     end
     route.modifiedIndex = route.modifiedIndex_org .. "#" .. ngx_now()
     api_ctx.conf_version = route.modifiedIndex
-
     route.dns_value = core.table.deepcopy(route.value)
     route.dns_value.upstream.nodes = new_nodes
     core.log.info("parse route which contain domain: ",
@@ -358,6 +376,7 @@ function _M.http_access_phase()
     core.log.info("matched route: ",
                   core.json.delay_encode(api_ctx.matched_route, true))
 
+    --校验路由匹配结果
     local route = api_ctx.matched_route
     if not route then
         return core.response.exit(404,
@@ -378,6 +397,7 @@ function _M.http_access_phase()
 
         local changed
         route, changed = plugin.merge_service_route(service, route)
+
         api_ctx.matched_route = route
 
         if changed then
@@ -399,6 +419,7 @@ function _M.http_access_phase()
 
     local enable_websocket
     local up_id = route.value.upstream_id
+
     if up_id then
         local upstreams = core.config.fetch_created_obj("/upstreams")
         if upstreams then
@@ -442,6 +463,8 @@ function _M.http_access_phase()
 
     else
         if route.has_domain then
+            --开始解析域名，这是直接从缓存里面拿的，return_direct是个空方法，什么都没处理
+            --这里可能是想根据route作为key，api_ctx.conf_version作为version，直接从缓存里面拿
             local parsed_route, err = lru_resolved_domain(route, api_ctx.conf_version,
                                         return_direct, nil)
             if err then
@@ -449,7 +472,9 @@ function _M.http_access_phase()
                 return core.response.exit(500)
             end
 
+            --未解析成功
             if not parsed_route then
+                --在路由配置中中解析域名
                 route, err = parse_domain_in_route(route, api_ctx)
                 if err then
                     core.log.error("failed to reolve domain in route: ", err)
@@ -457,6 +482,7 @@ function _M.http_access_phase()
                 end
 
                 --创建路由的时候并不会把路由信息放入lrucache，只有在访问的时候才会把路由信息放入
+                --api_ctx.conf_version由于上面parse_domain_in_route带上了ngx_now()，所以基本缓存不了，这里应该还是跟dns缓存有关系
                 lru_resolved_domain(route, api_ctx.conf_version,
                                 return_direct, route)
             end
@@ -473,8 +499,10 @@ function _M.http_access_phase()
     end
 
     local plugins = core.tablepool.fetch("plugins", 32, 0)
+    --把route中挂载的plugins(主要是plugins名字和配置)复制扩展到plugins中
+    --这里不仅仅是复制，应该是根据plugins名字和配置，结合plugins的运行时代码，全部挪到plugins中
+    --然后赋值给api_ctx.plugins，即可直接调用插件的相关代码
     api_ctx.plugins = plugin.filter(route, plugins)
-
     run_plugin("rewrite", plugins, api_ctx)
     if api_ctx.consumer then
         local changed

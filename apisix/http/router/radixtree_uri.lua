@@ -81,7 +81,6 @@ local function create_radixtree_router(routes)
                                or route.value.remote_addr,
                 vars = route.value.vars,
                 filter_fun = filter_fun,
-                --todo 这里定义的handler是在哪里调用的，以及api_ctx.matched_route
                 handler = function (api_ctx)
                     api_ctx.matched_params = nil
                     api_ctx.matched_route = route
@@ -94,10 +93,6 @@ local function create_radixtree_router(routes)
 
     core.log.info("route items: ", core.json.delay_encode(uri_routes, true))
     uri_router = router.new(uri_routes)
-
-
-    local inspect = require("apisix.inspect")
-    core.log.warn("uri_router: " .. inspect(uri_router))
 end
 
 

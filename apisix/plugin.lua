@@ -300,24 +300,32 @@ end
 
 
 local function merge_service_route(service_conf, route_conf)
+
+    --深拷贝service_conf，并且把route_conf的部分属性赋值给new_conf
     local new_conf = core.table.deepcopy(service_conf)
     new_conf.value.service_id = new_conf.value.id
     new_conf.value.id = route_conf.value.id
 
+    --把router的plugins赋给new_conf
     if route_conf.value.plugins then
         for name, conf in pairs(route_conf.value.plugins) do
+            --如果service中原本没有plugins，则初始化为一个空table
             if not new_conf.value.plugins then
                 new_conf.value.plugins = {}
             end
-
+            --把router的plugins赋值给了service的plugins
+            --如果存在router的plugins和service的plugins重复
+            --这里也是router的plugins覆盖service的plugins
             new_conf.value.plugins[name] = conf
         end
     end
 
+    --把router的upstream赋给new_conf
     local route_upstream = route_conf.value.upstream
     if route_upstream then
         new_conf.value.upstream = route_upstream
 
+        --todo 这里upstream.parent的操作不懂,应该是跟健康检查有关系
         if route_upstream.checks then
             route_upstream.parent = route_conf
         end
@@ -338,6 +346,8 @@ function _M.merge_service_route(service_conf, route_conf)
     core.log.info("service conf: ", core.json.delay_encode(service_conf))
     core.log.info("  route conf: ", core.json.delay_encode(route_conf))
 
+    --merged_route是一个function，下面这段是执行function
+    --即执行apisix/core/lrucache.lua#new_lru_fun#return后的function
     return merged_route(route_conf, service_conf,
                         merge_service_route,
                         service_conf, route_conf)

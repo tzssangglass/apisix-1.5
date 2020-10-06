@@ -81,8 +81,9 @@ local function dns_parse(resolvers, domain)
     if not r then
         return nil, "failed to instantiate the resolver: " .. err
     end
-
+    --执行dns查询
     local answers, err = r:query(domain, nil, {})
+
     if not answers then
         return nil, "failed to query the DNS server: " .. err
     end
@@ -92,6 +93,8 @@ local function dns_parse(resolvers, domain)
                     .. ": " .. answers.errstr
     end
 
+    --从answers中 随机选择一个
+    --注意：这里math.random在init的时候已经设置了seed，所以能保证随机性
     local idx = math.random(1, #answers)
     local answer = answers[idx]
     if answer.type == 1 then

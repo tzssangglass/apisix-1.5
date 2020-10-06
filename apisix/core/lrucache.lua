@@ -109,6 +109,7 @@ local function new_lru_fun(opts)
 
         local cache_obj = fetch_valid_cache(lru_obj, invalid_stale, item_ttl,
                             item_release, key, version)
+
         if cache_obj then
             return cache_obj
         end
@@ -126,12 +127,14 @@ local function new_lru_fun(opts)
 
         cache_obj = fetch_valid_cache(lru_obj, invalid_stale, item_ttl,
                         nil, key, version)
+
         if cache_obj then
             lock:unlock()
             return cache_obj
         end
 
         local obj, err = create_obj_fun(...)
+
         if type(obj) == 'table' then
             obj._cache_ver = version
             lru_obj:set(key, obj, item_ttl)
@@ -142,7 +145,6 @@ local function new_lru_fun(opts)
             lru_obj:set(key, cached_obj, item_ttl)
         end
         lock:unlock()
-
         return obj, err
     end
 end
