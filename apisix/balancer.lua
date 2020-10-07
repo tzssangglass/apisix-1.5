@@ -53,6 +53,7 @@ local _M = {
 local function fetch_health_nodes(upstream, checker)
     local nodes = upstream.nodes
     if not checker then
+        --没有checker的话，直接从upstream.nodes中剥取ip+port和权重返回
         local new_nodes = core.table.new(0, #nodes)
         for _, node in ipairs(nodes) do
             -- TODO filter with metadata
@@ -139,8 +140,10 @@ end
 
 
 local function create_server_picker(upstream, checker)
+    --picker即负载均衡算法，这里根据upstream.type来选择相应的负载均衡算法
     local picker = pickers[upstream.type]
     if picker then
+        --获取健康的节点
         local up_nodes = fetch_health_nodes(upstream, checker)
         core.log.info("upstream nodes: ", core.json.delay_encode(up_nodes))
 
@@ -160,7 +163,12 @@ end
 local function pick_server(route, ctx)
     core.log.info("route: ", core.json.delay_encode(route, true))
     core.log.info("ctx: ", core.json.delay_encode(ctx, true))
+
+    --获取上游配置
     local up_conf = ctx.upstream_conf
+    --service_name应该是跟用户自定义dns解析服务器有关的配置
+    --如果存在的话，怎使用用户的自定义dns解析服务
+    --todo 在哪里设置service_name未找到
     if up_conf.service_name then
         if not discovery then
             return nil, "discovery is uninitialized"
@@ -189,6 +197,7 @@ local function pick_server(route, ctx)
         return node
     end
 
+    --upstream_healthcheck_parent在upstream#set_directly中有设置，本质上是启动的时候调用的set_by_route函数
     local healthcheck_parent = ctx.upstream_healthcheck_parent
     local version = ctx.upstream_version
     local key = ctx.upstream_key
@@ -216,8 +225,8 @@ local function pick_server(route, ctx)
         if not retries or retries < 0 then
             retries = #up_conf.nodes - 1
         end
-
         if retries > 0 then
+            --设置连接失败后的重试次数
             set_more_tries(retries)
         end
     end
@@ -232,12 +241,14 @@ local function pick_server(route, ctx)
         return nil, "failed to fetch server picker"
     end
 
+    --调用resty.roundrobin库的#find函数来选取上游
     local server, err = server_picker.get(ctx)
     if not server then
         err = err or "no valid upstream node"
         return nil, "failed to find valid upstream server, " .. err
     end
 
+    --解析上游为固定格式
     local res, err = lrucache_addr(server, nil, parse_addr, server)
     ctx.balancer_ip = res.host
     ctx.balancer_port = res.port
@@ -256,6 +267,7 @@ _M.pick_server = pick_server
 
 
 function _M.run(route, ctx)
+    --选取上游节点
     local server, err = pick_server(route, ctx)
     if not server then
         core.log.error("failed to pick server: ", err)
@@ -263,7 +275,15 @@ function _M.run(route, ctx)
     end
 
     core.log.info("proxy request to ", server.host, ":", server.port)
+    --设置使用的后端服务器，必须是 IP 地址，不能是域名；
+    --这里主要用的是ngx.balancer库的相关函数
     local ok, err = balancer.set_current_peer(server.host, server.port)
+
+
+    local inspect = require("apisix.inspect")
+    core.log.warn("ok: " .. inspect(ok))
+
+
     if not ok then
         core.log.error("failed to set server peer [", server.host, ":",
                        server.port, "] err: ", err)

@@ -84,6 +84,7 @@ function _M.set_by_route(route, api_ctx)
         return false, "missing upstream configuration in Route or Service"
     end
 
+    --把route上携带的upstream设置到api_ctx中
     set_directly(api_ctx, up_conf.type .. "#route_" .. route.value.id,
                  api_ctx.conf_version, up_conf, route)
     return true

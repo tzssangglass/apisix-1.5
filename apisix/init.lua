@@ -512,8 +512,10 @@ function _M.http_access_phase()
             api_ctx.plugins = plugin.filter(route, api_ctx.plugins)
         end
     end
+    --执行插件代码
     run_plugin("access", plugins, api_ctx)
 
+    --设置upstream
     local ok, err = set_upstream(route, api_ctx)
     if not ok then
         core.log.error("failed to parse upstream: ", err)
